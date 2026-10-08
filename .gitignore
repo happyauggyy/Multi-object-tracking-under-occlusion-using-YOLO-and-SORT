@@ -1,0 +1,59 @@
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Environment variables & secrets
+.env
+.env.*
+*.secret
+*.key
+*.token
+
+# Datasets (Keep data/ directory tracked via .gitkeep)
+data/*
+!data/.gitkeep
+MOT17/
+MOT20/
+*.zip
+*.tar
+*.tar.gz
+
+# Pretrained models & weights
+models/*
+!models/.gitkeep
+*.pt
+*.pth
+*.onnx
+*.engine
+
+# Generated run outputs (Keep folder structure via gitkeep if needed, ignore contents)
+outputs/videos/*
+outputs/failure_cases/*
+outputs/tracking_results/*
+outputs/plots/*
+outputs/metrics/*
+!outputs/videos/.gitkeep
+!outputs/failure_cases/.gitkeep
+!outputs/tracking_results/.gitkeep
+!outputs/plots/.gitkeep
+!outputs/metrics/.gitkeep
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo

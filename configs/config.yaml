@@ -1,0 +1,23 @@
+# Multi-Object Tracking Under Occlusion Configuration
+
+detector:
+  model: "yolo11n.pt"  # Lightweight Ultralytics model (auto-downloads if absent, or falls back to yolov8n.pt)
+  confidence_threshold: 0.40
+  person_class_id: 0  # COCO class 0: person
+  device: ""  # Empty for auto (cuda/cpu), or specify 'cpu', 'cuda:0'
+
+tracker:
+  max_age: 30  # Maximum frames to keep dead/occluded track alive before removal
+  min_hits: 3  # Minimum successful detections before confirming track for reporting
+  iou_threshold: 0.30  # Minimum IoU for matching detection to existing track
+
+visualization:
+  trajectory_length: 50  # Number of historical centroid points to draw
+  draw_boxes: true
+  draw_labels: true
+  draw_trajectories: true
+  line_thickness: 2
+  font_scale: 0.5
+
+evaluation:
+  iou_threshold: 0.50  # MOT challenge evaluation standard IoU match threshold
