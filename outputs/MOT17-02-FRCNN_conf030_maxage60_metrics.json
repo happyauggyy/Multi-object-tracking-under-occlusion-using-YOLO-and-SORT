@@ -1,0 +1,13 @@
+{
+    "sequence": "MOT17-02-FRCNN-conf030-maxage60",
+    "iou_threshold": 0.5,
+    "mota": 0.18658845056778428,
+    "idf1": 0.2647398349651546,
+    "id_switches": 67,
+    "false_positives": 637,
+    "false_negatives": 14410,
+    "ground_truth_objects": 18581,
+    "mostly_tracked": 7,
+    "partially_tracked": 13,
+    "mostly_lost": 42
+}

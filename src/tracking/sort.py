@@ -18,6 +18,10 @@ class SortTracker:
         max_age: int = 30,
         min_hits: int = 3,
         iou_threshold: float = 0.30,
+        two_stage: bool = False,
+        high_conf_threshold: float = 0.35,
+        low_conf_threshold: float = 0.10,
+        iou_threshold_second: Optional[float] = None,
     ):
         """
         Initialize the SORT tracker.
@@ -27,24 +31,57 @@ class SortTracker:
                      Preserves ID during brief occlusions.
             min_hits: Minimum detection hits before track is confirmed and output.
             iou_threshold: Minimum IoU overlap required for detection-to-track association.
+            two_stage: If True, enable ByteTrack-style two-stage association.
+            high_conf_threshold: High confidence threshold for stage 1 association.
+            low_conf_threshold: Low confidence threshold for stage 2 track recovery.
+            iou_threshold_second: Optional IoU threshold for stage 2 (defaults to iou_threshold).
         """
         self.max_age = int(max_age)
         self.min_hits = int(min_hits)
         self.iou_threshold = float(iou_threshold)
+        self.two_stage = bool(two_stage)
+        self.high_conf_threshold = float(high_conf_threshold)
+        self.low_conf_threshold = float(low_conf_threshold)
+        self.iou_threshold_second = (
+            float(iou_threshold_second) if iou_threshold_second is not None else float(iou_threshold)
+        )
 
         self.tracks: List[Track] = []
         self.frame_count: int = 0
+        self.diagnostics = {
+            "total_frames": 0,
+            "high_dets": 0,
+            "low_dets": 0,
+            "stage1_matches": 0,
+            "stage2_matches": 0,
+            "unmatched_high_dets": 0,
+            "unmatched_low_dets": 0,
+        }
 
     def reset(self) -> None:
         """Reset tracker state and track IDs."""
         self.tracks.clear()
         self.frame_count = 0
+        self.diagnostics = {
+            "total_frames": 0,
+            "high_dets": 0,
+            "low_dets": 0,
+            "stage1_matches": 0,
+            "stage2_matches": 0,
+            "unmatched_high_dets": 0,
+            "unmatched_low_dets": 0,
+        }
         Track.reset_counter()
+
+    def get_diagnostics(self) -> dict:
+        """Return cumulative association diagnostics."""
+        return dict(self.diagnostics)
 
     def _associate_detections_to_tracks(
         self,
         detections: np.ndarray,
         predicted_boxes: np.ndarray,
+        iou_threshold: Optional[float] = None,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Associate detections to existing tracks using Hungarian algorithm on IoU matrix.
@@ -52,6 +89,7 @@ class SortTracker:
         Args:
             detections: Array of shape (M, 4+) [x1, y1, x2, y2, ...]
             predicted_boxes: Array of shape (N, 4) [x1, y1, x2, y2]
+            iou_threshold: Optional override for matching IoU threshold.
 
         Returns:
             Tuple of:
@@ -59,6 +97,7 @@ class SortTracker:
                 unmatched_tracks: (U_t,) 1D array of track indices
                 unmatched_detections: (U_d,) 1D array of detection indices
         """
+        thresh = float(iou_threshold) if iou_threshold is not None else self.iou_threshold
         num_tracks = len(predicted_boxes)
         num_dets = len(detections)
 
@@ -79,15 +118,29 @@ class SortTracker:
         # Compute IoU matrix (shape: num_tracks x num_dets)
         iou_matrix = compute_iou(predicted_boxes, detections[:, :4])
 
-        # Hungarian assignment minimizing negative IoU (maximizing IoU)
-        row_ind, col_ind = linear_sum_assignment(-iou_matrix)
+        # Fast path: if no pairs meet the threshold, all tracks and detections are unmatched
+        if not np.any(iou_matrix >= thresh):
+            return (
+                np.empty((0, 2), dtype=int),
+                np.arange(num_tracks, dtype=int),
+                np.arange(num_dets, dtype=int),
+            )
+
+        # Cost matrix: minimize (1.0 - IoU) for valid associations.
+        # Assign high cost to invalid pairs (IoU < threshold) so Hungarian matching
+        # strictly maximizes valid associations without allowing rejected pairs to bias matches.
+        cost_matrix = 1.0 - iou_matrix
+        invalid_cost = 1e5
+        cost_matrix[iou_matrix < thresh] = invalid_cost
+
+        row_ind, col_ind = linear_sum_assignment(cost_matrix)
 
         matches = []
         unmatched_tracks = set(range(num_tracks))
         unmatched_dets = set(range(num_dets))
 
         for r, c in zip(row_ind, col_ind):
-            if iou_matrix[r, c] >= self.iou_threshold:
+            if iou_matrix[r, c] >= thresh:
                 matches.append([r, c])
                 unmatched_tracks.discard(r)
                 unmatched_dets.discard(c)
@@ -143,23 +196,82 @@ class SortTracker:
         self.tracks = [self.tracks[i] for i in valid_track_indices]
         pred_boxes_arr = np.array(predicted_boxes, dtype=np.float64) if predicted_boxes else np.empty((0, 4), dtype=np.float64)
 
-        # 2. Hungarian association
-        matches, unmatched_trks, unmatched_dets = self._associate_detections_to_tracks(
-            dets, pred_boxes_arr
-        )
+        # 2. Association (Single-stage or ByteTrack Two-stage)
+        self.diagnostics["total_frames"] += 1
 
-        # 3. Update matched tracks
-        for trk_idx, det_idx in matches:
-            det_box = dets[det_idx, :4]
-            det_conf = float(dets[det_idx, 4])
-            self.tracks[trk_idx].update(det_box, confidence=det_conf)
+        if self.two_stage and dets.shape[0] > 0 and dets.shape[1] >= 5:
+            high_mask = dets[:, 4] >= self.high_conf_threshold
+            low_mask = (dets[:, 4] >= self.low_conf_threshold) & (~high_mask)
 
-        # 4. Initialize new tracks for unmatched detections
-        for det_idx in unmatched_dets:
-            det_box = dets[det_idx, :4]
-            det_conf = float(dets[det_idx, 4])
-            new_trk = Track(det_box, confidence=det_conf)
-            self.tracks.append(new_trk)
+            dets_high = dets[high_mask]
+            dets_low = dets[low_mask]
+
+            self.diagnostics["high_dets"] += int(len(dets_high))
+            self.diagnostics["low_dets"] += int(len(dets_low))
+
+            # Stage 1: Associate existing tracks with high-confidence detections
+            matches_high, unmatched_trks_1, unmatched_dets_high = self._associate_detections_to_tracks(
+                dets_high, pred_boxes_arr, iou_threshold=self.iou_threshold
+            )
+            self.diagnostics["stage1_matches"] += int(len(matches_high))
+            self.diagnostics["unmatched_high_dets"] += int(len(unmatched_dets_high))
+
+            # Stage 2: Associate remaining tracks with low-confidence detections
+            matches_low = []
+            unmatched_trks = list(unmatched_trks_1)
+
+            if len(unmatched_trks_1) > 0 and len(dets_low) > 0:
+                unmatched_pred_boxes = pred_boxes_arr[unmatched_trks_1]
+                matches_low_sub, unmatched_sub_indices, _ = self._associate_detections_to_tracks(
+                    dets_low, unmatched_pred_boxes, iou_threshold=self.iou_threshold_second
+                )
+
+                for sub_trk_idx, low_det_idx in matches_low_sub:
+                    orig_trk_idx = unmatched_trks_1[sub_trk_idx]
+                    matches_low.append((orig_trk_idx, low_det_idx))
+
+                unmatched_trks = [unmatched_trks_1[i] for i in unmatched_sub_indices]
+
+            self.diagnostics["stage2_matches"] += int(len(matches_low))
+            self.diagnostics["unmatched_low_dets"] += int(len(dets_low) - len(matches_low))
+
+            # 3. Update matched tracks from both stages
+            for trk_idx, det_idx in matches_high:
+                det_box = dets_high[det_idx, :4]
+                det_conf = float(dets_high[det_idx, 4])
+                self.tracks[trk_idx].update(det_box, confidence=det_conf)
+
+            for trk_idx, det_idx in matches_low:
+                det_box = dets_low[det_idx, :4]
+                det_conf = float(dets_low[det_idx, 4])
+                self.tracks[trk_idx].update(det_box, confidence=det_conf)
+
+            # 4. Initialize new tracks ONLY from unmatched high-confidence detections
+            # (Unmatched low-confidence detections are explicitly discarded to prevent false tracks)
+            for det_idx in unmatched_dets_high:
+                det_box = dets_high[det_idx, :4]
+                det_conf = float(dets_high[det_idx, 4])
+                new_trk = Track(det_box, confidence=det_conf)
+                self.tracks.append(new_trk)
+
+        else:
+            # Single-stage standard SORT association
+            matches, unmatched_trks, unmatched_dets = self._associate_detections_to_tracks(
+                dets, pred_boxes_arr, iou_threshold=self.iou_threshold
+            )
+
+            # 3. Update matched tracks
+            for trk_idx, det_idx in matches:
+                det_box = dets[det_idx, :4]
+                det_conf = float(dets[det_idx, 4])
+                self.tracks[trk_idx].update(det_box, confidence=det_conf)
+
+            # 4. Initialize new tracks for unmatched detections
+            for det_idx in unmatched_dets:
+                det_box = dets[det_idx, :4]
+                det_conf = float(dets[det_idx, 4])
+                new_trk = Track(det_box, confidence=det_conf)
+                self.tracks.append(new_trk)
 
         # 5. Filter out dead tracks (exceeded max_age)
         self.tracks = [trk for trk in self.tracks if not trk.is_dead(self.max_age)]

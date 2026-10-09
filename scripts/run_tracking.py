@@ -38,6 +38,10 @@ def run_tracking(
     iou_thresh: float = -1.0,
     device: str = "",
     display: bool = False,
+    imgsz: int = -1,
+    two_stage: bool = False,
+    low_conf_thresh: float = -1.0,
+    iou_thresh_second: float = -1.0,
 ) -> str:
     """
     Execute full YOLO + SORT tracking pipeline.
@@ -54,6 +58,10 @@ def run_tracking(
         iou_thresh: Optional override for tracker IoU threshold.
         device: Hardware device for YOLO.
         display: If True, show live OpenCV display window.
+        imgsz: Optional override for detector inference image size (e.g. 640, 960, 1280).
+        two_stage: If True, enable ByteTrack-style two-stage association.
+        low_conf_thresh: Low confidence threshold for stage-2 recovery.
+        iou_thresh_second: Optional override for stage-2 IoU threshold.
 
     Returns:
         Path to output tracking text file.
@@ -69,10 +77,19 @@ def run_tracking(
     conf = conf_thresh if conf_thresh >= 0.0 else det_cfg.get("confidence_threshold", 0.40)
     dev = device if device else det_cfg.get("device", "")
     person_cls = det_cfg.get("person_class_id", 0)
+    i_size = imgsz if imgsz > 0 else det_cfg.get("imgsz", None)
 
     m_age = max_age if max_age >= 0 else trk_cfg.get("max_age", 30)
     m_hits = min_hits if min_hits >= 0 else trk_cfg.get("min_hits", 3)
     i_thresh = iou_thresh if iou_thresh >= 0.0 else trk_cfg.get("iou_threshold", 0.30)
+
+    # Two-stage parameters
+    is_two_stage = bool(two_stage or trk_cfg.get("two_stage", False))
+    low_conf = low_conf_thresh if low_conf_thresh >= 0.0 else trk_cfg.get("low_conf_threshold", 0.10)
+    i_thresh_second = iou_thresh_second if iou_thresh_second >= 0.0 else trk_cfg.get("iou_threshold_second", None)
+
+    # If two-stage is active, detector must produce candidates down to low_conf
+    det_conf = min(conf, low_conf) if is_two_stage else conf
 
     print("==================================================")
     print("Multi-Object Tracking Under Occlusion")
@@ -80,21 +97,30 @@ def run_tracking(
     print(f"Input:         {input_path}")
     print(f"Output TXT:    {output_txt}")
     print(f"Output Video:  {output_video if output_video else 'Disabled'}")
-    print(f"Detector:      {model} (conf={conf}, class={person_cls})")
+    print(f"Detector:      {model} (conf={conf}, class={person_cls}, imgsz={i_size if i_size else 'default'})")
+    if is_two_stage:
+        print(f"Association:   ByteTrack Two-Stage (high_conf={conf}, low_conf={low_conf})")
+    else:
+        print("Association:   Single-Stage SORT")
     print(f"SORT Tracker:  max_age={m_age}, min_hits={m_hits}, iou_thresh={i_thresh}")
     print("==================================================")
 
     # Initialize components
     detector = YOLODetector(
         model_name=model,
-        conf_thresh=conf,
+        conf_thresh=det_conf,
         person_class_id=person_cls,
         device=dev,
+        imgsz=i_size,
     )
     tracker = SortTracker(
         max_age=m_age,
         min_hits=m_hits,
         iou_threshold=i_thresh,
+        two_stage=is_two_stage,
+        high_conf_threshold=conf,
+        low_conf_threshold=low_conf,
+        iou_threshold_second=i_thresh_second,
     )
     renderer = TrajectoryRenderer(
         trajectory_length=vis_cfg.get("trajectory_length", 50),
@@ -160,6 +186,19 @@ def run_tracking(
     print(f"Finished! Processed {total_processed} frames in {elapsed:.2f}s (Avg {avg_fps:.1f} FPS)")
     print(f"Total track annotations recorded: {len(mot_results)}")
 
+    if is_two_stage:
+        diag = tracker.get_diagnostics()
+        print("--------------------------------------------------")
+        print("Two-Stage Association Diagnostics:")
+        print(f"  Total frames:                {diag.get('total_frames', 0)}")
+        print(f"  High-confidence detections:  {diag.get('high_dets', 0)}")
+        print(f"  Low-confidence detections:   {diag.get('low_dets', 0)}")
+        print(f"  Stage-1 matches (High-conf): {diag.get('stage1_matches', 0)}")
+        print(f"  Stage-2 matches (Low-conf):  {diag.get('stage2_matches', 0)}")
+        print(f"  Unmatched high-conf dets:    {diag.get('unmatched_high_dets', 0)} (spawned new tracks)")
+        print(f"  Unmatched low-conf dets:     {diag.get('unmatched_low_dets', 0)} (discarded)")
+        print("--------------------------------------------------")
+
     save_mot_results(output_txt, mot_results)
     print(f"Tracking output saved to: {output_txt}")
     if output_video:
@@ -181,6 +220,10 @@ def main():
     parser.add_argument("--iou-thresh", type=float, default=-1.0, help="Tracker IoU threshold override.")
     parser.add_argument("--device", type=str, default="", help="Device: 'cpu', 'cuda:0', etc.")
     parser.add_argument("--display", action="store_true", help="Display tracking output window in real-time.")
+    parser.add_argument("--imgsz", type=int, default=-1, help="Inference image size (e.g. 640, 960, 1280). Default: model default.")
+    parser.add_argument("--two-stage", action="store_true", help="Enable ByteTrack-style two-stage association.")
+    parser.add_argument("--low-conf-thresh", type=float, default=-1.0, help="Low confidence threshold for two-stage association.")
+    parser.add_argument("--iou-thresh-second", type=float, default=-1.0, help="Stage 2 IoU threshold override.")
 
     args = parser.parse_args()
     run_tracking(
@@ -195,6 +238,10 @@ def main():
         iou_thresh=args.iou_thresh,
         device=args.device,
         display=args.display,
+        imgsz=args.imgsz,
+        two_stage=args.two_stage,
+        low_conf_thresh=args.low_conf_thresh,
+        iou_thresh_second=args.iou_thresh_second,
     )
 
 

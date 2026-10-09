@@ -1,0 +1,13 @@
+{
+    "sequence": "MOT17-02-FRCNN-conf035-iou020",
+    "iou_threshold": 0.5,
+    "mota": 0.18750336365104137,
+    "idf1": 0.2613333333333333,
+    "id_switches": 52,
+    "false_positives": 379,
+    "false_negatives": 14666,
+    "ground_truth_objects": 18581,
+    "mostly_tracked": 7,
+    "partially_tracked": 13,
+    "mostly_lost": 42
+}

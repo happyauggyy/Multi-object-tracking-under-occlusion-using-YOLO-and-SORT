@@ -1,0 +1,2 @@
+sequence,iou_threshold,mota,idf1,id_switches,false_positives,false_negatives,ground_truth_objects,mostly_tracked,partially_tracked,mostly_lost
+MOT17-02-FRCNN-conf025,0.5,0.18750336365104137,0.267717191929298,81,921,14095,18581,7,14,41

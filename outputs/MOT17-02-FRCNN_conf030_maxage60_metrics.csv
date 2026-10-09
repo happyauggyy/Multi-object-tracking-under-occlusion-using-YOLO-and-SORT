@@ -1,0 +1,2 @@
+sequence,iou_threshold,mota,idf1,id_switches,false_positives,false_negatives,ground_truth_objects,mostly_tracked,partially_tracked,mostly_lost
+MOT17-02-FRCNN-conf030-maxage60,0.5,0.18658845056778428,0.2647398349651546,67,637,14410,18581,7,13,42

@@ -13,6 +13,7 @@ class YOLODetector:
         conf_thresh: float = 0.40,
         person_class_id: int = 0,
         device: str = "",
+        imgsz: Optional[int] = None,
     ):
         """
         Initialize the YOLO detector.
@@ -22,11 +23,13 @@ class YOLODetector:
             conf_thresh: Confidence threshold for person detections (default: 0.40).
             person_class_id: Class ID for person in COCO dataset (default: 0).
             device: Computing device ('cpu', 'cuda:0', or empty string for auto-detection).
+            imgsz: Optional inference image size (e.g. 640, 960, 1280). Default: model default.
         """
         self.model_name = model_name
         self.conf_thresh = float(conf_thresh)
         self.person_class_id = int(person_class_id)
         self.device = device if device else None
+        self.imgsz = int(imgsz) if (imgsz is not None and int(imgsz) > 0) else None
         self._model = None
 
     def _load_model(self):
@@ -72,6 +75,8 @@ class YOLODetector:
         }
         if self.device is not None:
             kwargs["device"] = self.device
+        if self.imgsz is not None:
+            kwargs["imgsz"] = self.imgsz
 
         results = self._model(frame, **kwargs)
         if not results:

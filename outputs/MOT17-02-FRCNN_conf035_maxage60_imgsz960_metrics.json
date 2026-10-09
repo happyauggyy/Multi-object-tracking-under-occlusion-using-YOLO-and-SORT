@@ -1,0 +1,13 @@
+{
+    "sequence": "MOT17-02-FRCNN-conf035-maxage60-imgsz960",
+    "iou_threshold": 0.5,
+    "mota": 0.2479414455626715,
+    "idf1": 0.33594643148783276,
+    "id_switches": 70,
+    "false_positives": 617,
+    "false_negatives": 13287,
+    "ground_truth_objects": 18581,
+    "mostly_tracked": 7,
+    "partially_tracked": 16,
+    "mostly_lost": 39
+}

@@ -1,0 +1,13 @@
+{
+    "sequence": "MOT17-02-FRCNN",
+    "iou_threshold": 0.5,
+    "mota": 0.18147570098487698,
+    "idf1": 0.2649207197577053,
+    "id_switches": 35,
+    "false_positives": 232,
+    "false_negatives": 14942,
+    "ground_truth_objects": 18581,
+    "mostly_tracked": 7,
+    "partially_tracked": 12,
+    "mostly_lost": 43
+}

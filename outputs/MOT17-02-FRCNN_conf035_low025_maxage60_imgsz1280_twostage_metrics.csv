@@ -1,0 +1,2 @@
+sequence,iou_threshold,mota,idf1,id_switches,false_positives,false_negatives,ground_truth_objects,mostly_tracked,partially_tracked,mostly_lost
+MOT17-02-FRCNN-conf035-low025-maxage60-imgsz1280-twostage,0.5,0.2523007373123083,0.3751614291863969,121,2243,11529,18581,8,24,30

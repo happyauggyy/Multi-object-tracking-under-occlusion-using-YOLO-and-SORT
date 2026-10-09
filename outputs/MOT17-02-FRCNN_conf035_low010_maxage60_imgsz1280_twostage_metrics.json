@@ -1,0 +1,13 @@
+{
+    "sequence": "MOT17-02-FRCNN-conf035-low010-maxage60-imgsz1280-twostage",
+    "iou_threshold": 0.5,
+    "mota": 0.15558904257036754,
+    "idf1": 0.36665327689027594,
+    "id_switches": 169,
+    "false_positives": 5361,
+    "false_negatives": 10160,
+    "ground_truth_objects": 18581,
+    "mostly_tracked": 9,
+    "partially_tracked": 32,
+    "mostly_lost": 21
+}
