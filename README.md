@@ -371,3 +371,10 @@ python -m compileall src scripts tests
 ## 19. License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+## Tracking Visualization
+
+The tracking output video demonstrates YOLO-based pedestrian detection and SORT multi-object tracking on the MOT17-02-FRCNN sequence, including tracked bounding boxes and object IDs.
+
+**[Watch the tracking visualization](https://drive.google.com/file/d/1KALilKiIo7KVK8eo14fSJI-Ww0tMU2_E/view?usp=sharing)**
+
+The video is hosted on Google Drive because the generated MP4 is too large for a reliable direct Git upload.
